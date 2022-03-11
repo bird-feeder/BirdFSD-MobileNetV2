@@ -1,16 +1,23 @@
 import imghdr
 import json
+import os
+import shutil
 from glob import glob
 from pathlib import Path
 from urllib.error import HTTPError
 
 import cv2
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
 from PIL import Image
 from loguru import logger
 from tqdm import tqdm
+
+from helpers import load_export_data, to_tar
 
 
 def get_img(img_url):
@@ -48,18 +55,11 @@ def crop_images(item):
         im.save(f'dataset_cropped/{label_name}/{Path(item["image"]).name}')
 
 
-def main(data_file):  # project export min-json file
-    with open(data_file) as j:
-        data = json.load(j)
-
-    if not Path(dataset).exists():
-        raise FileNotFoundError
-    dataset_files = glob('dataset/**/*.jpg', recursive=True)
-
+def main(data):  # project export min-json file
     df = pd.DataFrame(data, columns=['id', 'annotation_id', 'image', 'label'])
     df.dropna(inplace=True)
 
-    Path(f'dataset_cropped').mkdir(exist_ok=True)
+    Path('dataset_cropped').mkdir(exist_ok=True)
 
     for item in tqdm(data):
         if not item.get('label'):
@@ -77,8 +77,17 @@ def main(data_file):  # project export min-json file
             crop_img = img[y:y + h, x:x + w]
             im = Image.fromarray(crop_img)
             im.save(f'dataset_cropped/{label_name}/{Path(item["image"]).name}',
-                    format='JPEG')
+                    format='JPEG', quality=100, subsampling=0)
+
+    for _class in ['no animal', 'severe occultation', 'distorted image']:
+        shutil.rmtree(f'dataset_cropped/{_class}')
+    to_tar('dataset_cropped')
 
 
-# if __name__ == '__main__':
-#     main('project-1-at-2022-03-10-06-43-25f7f02b.json')
+if __name__ == '__main__':
+    load_dotenv()
+    data = load_export_data(project_id=1, TOKEN=os.environ['TOKEN'])
+    if not Path('dataset').exists():
+        raise FileNotFoundError
+    dataset_files = glob('dataset/**/*.jpg', recursive=True)
+    main(data=data)

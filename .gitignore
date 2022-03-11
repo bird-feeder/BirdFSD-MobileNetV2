@@ -157,3 +157,4 @@ dataset/
 dataset_cropped/
 *.tar
 project-*.json
+not_downloaded.json

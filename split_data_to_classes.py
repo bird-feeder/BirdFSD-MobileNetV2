@@ -1,18 +1,19 @@
 import concurrent.futures
 import json
+import os
 import sys
 from pathlib import Path
 from urllib.error import HTTPError
 
 import requests
+from dotenv import load_dotenv
 from loguru import logger
 from tqdm import tqdm
 
+from helpers import load_export_data
 
-def main(export_file):
-    with open(export_file) as j:
-        data = json.load(j)
 
+def main(data):
     labels = list(
         set(
             sum(
@@ -51,7 +52,11 @@ def main(export_file):
     with open('not_downloaded.json', 'w') as j:
         json.dump(not_downloaded, j, indent=4)
 
+    logger.debug(f'Not downloaded:\n{not_downloaded}')
 
-# if __name__ == '__main__':
-#     i = 0
-#     main('project-1-at-2022-03-10-06-43-25f7f02b.json')
+
+if __name__ == '__main__':
+    load_dotenv()
+    data = load_export_data(project_id=1, TOKEN=os.environ['TOKEN'])
+    i = 0
+    main(data=data)
