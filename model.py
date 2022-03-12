@@ -6,6 +6,7 @@ import warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+import ipyplot
 import PIL.Image as Image
 import numpy as np
 import matplotlib
@@ -88,7 +89,7 @@ def build_model(feature_extractor_layer, image_batch):
     model = tf.keras.Sequential(
         [feature_extractor_layer,
          tf.keras.layers.Dense(num_classes)])
-    model.summary()
+    logger.debug(model.summary())
     predictions = model(image_batch)
     logger.debug(predictions.shape)
 
@@ -145,6 +146,8 @@ def predict_from_exported(export_path,
     reloaded = tf.keras.models.load_model(export_path)
     reloaded_result_batch = reloaded.predict(image_batch)
     reloaded_predicted_id = tf.math.argmax(reloaded_result_batch, axis=-1)
+    if isinstance(class_names, str):
+        class_names = np.load(class_names)
     reloaded_predicted_label_batch = class_names[reloaded_predicted_id]
     logger.debug(f'Prediction: {reloaded_predicted_label_batch}')
 
@@ -158,3 +161,22 @@ def predict_from_exported(export_path,
             plt.axis('off')
         _ = plt.suptitle('Model predictions')
     return reloaded_predicted_label_batch
+
+
+if __name__ == '__main__':
+    logger.add('logs.log')
+    classifier_model = load_pretrained()
+    train_ds, val_ds, class_names = prepare_dataset(
+        classifier_model, data_root='dataset_cropped')
+    image_batch, labels_batch = [(image_batch, labels_batch)
+                                 for image_batch, labels_batch in val_ds][1]
+
+    reloaded_predicted_label_batch = predict_from_exported(
+        export_path='saved_models/1646910408',
+        class_names=class_names,
+        image_batch=image_batch,
+        plot_preds=False)
+
+    html_ = ipyplot.plot_images(image_batch, reloaded_predicted_label_batch)
+    with open(f'plot_{int(time.time())}.html', 'w') as f:
+        f.write(html_)

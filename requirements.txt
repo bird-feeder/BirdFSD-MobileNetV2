@@ -9,3 +9,4 @@ python-dotenv>=0.19.2
 opencv-python>=4.5.5.64
 pillow>=9.0.1
 pandas>=1.4.1
+ipyplot>=1.1.0

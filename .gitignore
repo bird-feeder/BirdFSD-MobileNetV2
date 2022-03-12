@@ -161,3 +161,4 @@ not_downloaded.json
 logs/
 saved_models/
 class_names.npy
+*.html
