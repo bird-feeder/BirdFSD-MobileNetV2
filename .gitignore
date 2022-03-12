@@ -158,3 +158,6 @@ dataset_cropped/
 *.tar
 project-*.json
 not_downloaded.json
+logs/
+saved_models/
+class_names.npy
