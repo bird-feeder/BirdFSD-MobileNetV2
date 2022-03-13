@@ -3,6 +3,7 @@ import os
 import tarfile
 from pathlib import Path
 
+import ipyplot
 import requests
 from dotenv import load_dotenv
 from loguru import logger
@@ -24,3 +25,11 @@ def to_tar(input_path):
     with tarfile.open(f'{folder_name}.tar', 'w') as tar:
         tar.add(input_path, folder_name)
     logger.info(f'Archived {input_path}')
+
+
+def plot_batch(image_batch, reloaded_predicted_label_batch, fname=None):
+    html_ = ipyplot.plot_images(image_batch, reloaded_predicted_label_batch)
+    if not fname:
+        fname = f'plot_{int(time.time())}.html'
+    with open(fname, 'w') as f:
+        f.write(html_)

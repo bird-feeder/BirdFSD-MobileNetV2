@@ -1,8 +1,7 @@
-# >>>>>>>> ONLY APPLIES BOUNDING BOX AT THE MOMENT!!
-
 import json
 import os
 import sys
+from glob import glob
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +10,8 @@ from dotenv import load_dotenv
 from requests.structures import CaseInsensitiveDict
 from loguru import logger
 from tqdm import tqdm
+
+import model_predict
 
 
 def make_headers():
@@ -40,6 +41,14 @@ def find_image(img_name):
             return im
 
 
+def predict(image_path):
+    model = model_predict.create_model(class_names)
+    model.load_weights(pretrained_weights)
+    image = model_predict.preprocess(image_path)
+    pred, prob = model_predict.predict_from_exported(model, pretrained_weights, class_names, image)
+    return pred, prob
+
+
 def main(task_id):
     headers = make_headers()
     url = f"https://ls.aibird.me/api/tasks/{task_id}"
@@ -50,26 +59,32 @@ def main(task_id):
     else:
         return
     md_preds = find_image(Path(img).name)
-
     results = []
     scores = []
     for item in md_preds['detections']:
         if item['category'] != '1':
             continue
         x, y, width, height = [x * 100 for x in item['bbox']]
-        scores.append(item['conf'])
+        
+        for img_tuple in images:
+            if img_tuple[0] == Path(img).name:
+                print(Path(img).name)
+                pred, prob = predict(img_tuple[1])
+                scores.append(prob)
+                break
+
         results.append({
             'from_name': 'label',
             'to_name': 'image',
             'type': 'rectanglelabels',
             'value': {
-                'rectanglelabels': ['object'],
+                'rectanglelabels': [pred],
                 'x': x,
                 'y': y,
                 'width': width,
                 'height': height
             },
-            'score': item['conf']
+            'score': prob
         })
 
     post_ = {
@@ -90,18 +105,24 @@ def main(task_id):
 
 if __name__ == '__main__':
     logger.add('apply_predictions.log')
-    # md_data_file = 'data_.json'
+
+    class_names = 'class_names.npy'
+    pretrained_weights = 'weights/1647175692.h5'
+
+    images = glob('dataset_cropped/**/*.jpg', recursive=True)
+    images = [(Path(x).name, x) for x in images]
+    
     if len(sys.argv) == 1:
         raise Exception('You need to provide a path to the output data file!')
     if not Path(sys.argv[1]).exists():
         raise FileNotFoundError('The path you entered does not exist!')
     md_data_file = sys.argv[1]
+
     with open(md_data_file) as j:
         md_data = json.load(j)
 
-    data = get_all_tasks(project_id=1)
-    # with open('tasks_latest.json') as j:
-    #     data = json.load(j)
+    data = get_all_tasks(project_id=6)
+
     tasks_ids = [x['id'] for x in data]
 
     i = 0
@@ -112,4 +133,5 @@ if __name__ == '__main__':
                 i += 1
         except KeyboardInterrupt:
             sys.exit('Interrupted by the user...')
+
     logger.info(f'Total number of predictions applied: {i}')
