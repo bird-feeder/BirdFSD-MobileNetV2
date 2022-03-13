@@ -12,6 +12,7 @@ from loguru import logger
 from tqdm import tqdm
 
 import model_predict
+from mongodb_helpers import get_mongodb_data
 
 
 def make_headers():
@@ -36,7 +37,7 @@ def get_all_tasks(project_id):
 
 
 def find_image(img_name):
-    for im in md_data['images']:
+    for im in md_data:
         if Path(im['file']).name == img_name:
             return im
 
@@ -45,7 +46,8 @@ def predict(image_path):
     model = model_predict.create_model(class_names)
     model.load_weights(pretrained_weights)
     image = model_predict.preprocess(image_path)
-    pred, prob = model_predict.predict_from_exported(model, pretrained_weights, class_names, image)
+    pred, prob = model_predict.predict_from_exported(model, pretrained_weights,
+                                                     class_names, image)
     return pred, prob
 
 
@@ -65,10 +67,10 @@ def main(task_id):
         if item['category'] != '1':
             continue
         x, y, width, height = [x * 100 for x in item['bbox']]
-        
+
         for img_tuple in images:
             if img_tuple[0] == Path(img).name:
-                print(Path(img).name)
+                logger.debug(Path(img).name)
                 pred, prob = predict(img_tuple[1])
                 scores.append(prob)
                 break
@@ -104,22 +106,24 @@ def main(task_id):
 
 
 if __name__ == '__main__':
-    logger.add('apply_predictions.log')
+    logger.add('logs/apply_predictions.log')
 
     class_names = 'class_names.npy'
     pretrained_weights = 'weights/1647175692.h5'
 
     images = glob('dataset_cropped/**/*.jpg', recursive=True)
     images = [(Path(x).name, x) for x in images]
-    
-    if len(sys.argv) == 1:
-        raise Exception('You need to provide a path to the output data file!')
-    if not Path(sys.argv[1]).exists():
-        raise FileNotFoundError('The path you entered does not exist!')
-    md_data_file = sys.argv[1]
 
-    with open(md_data_file) as j:
-        md_data = json.load(j)
+    # if len(sys.argv) == 1:
+    #     raise Exception('You need to provide a path to the output data file!')
+    # if not Path(sys.argv[1]).exists():
+    #     raise FileNotFoundError('The path you entered does not exist!')
+    # md_data_file = sys.argv[1]
+
+    # with open(md_data_file) as j:
+    #     md_data = json.load(j)
+
+    md_data = get_mongodb_data()
 
     data = get_all_tasks(project_id=6)
 
