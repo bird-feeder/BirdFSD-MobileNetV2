@@ -165,3 +165,5 @@ class_names.npy
 _ignore/
 weights/
 tasks_latest.json
+picam/
+Untitled.ipynb
