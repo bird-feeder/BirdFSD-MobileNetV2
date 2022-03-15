@@ -109,6 +109,7 @@ def train_model(NUM_EPOCHS=100):
 
 
 def export_model():
+    Path('weights').mkdir(exist_ok=True)
     t = int(time.time())
     model.save(f'saved_models/{t}')
     model.save_weights(f'weights/{t}.h5')
