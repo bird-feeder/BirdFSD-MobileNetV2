@@ -5,14 +5,16 @@ import os
 import shutil
 import signal
 import sys
+import time
+import uuid
 from glob import glob
 from pathlib import Path
 
 import numpy as np
+import ray
 import requests
 from dotenv import load_dotenv
 from PIL import Image
-from requests.structures import CaseInsensitiveDict
 from loguru import logger
 from tqdm import tqdm
 
@@ -34,9 +36,8 @@ def mkdirs():
 
 
 def make_headers():
-    load_dotenv()
     TOKEN = os.environ['TOKEN']
-    headers = CaseInsensitiveDict()
+    headers = requests.structures.CaseInsensitiveDict()
     headers["Content-type"] = "application/json"
     headers["Authorization"] = f"Token {TOKEN}"
     return headers
@@ -96,7 +97,7 @@ def save_crop(img, bbox_norm, square_crop, save):
         box_h = min(img_h, box_size)
 
     if box_w == 0 or box_h == 0:
-        tqdm.write(f'Skipping size-0 crop (w={box_w}, h={box_h}) at {save}')
+        logger.debug(f'Skipping size-0 crop (w={box_w}, h={box_h}) at {save}')
         return False
 
     crop = img.crop(box=[xmin, ymin, xmin + box_w,
@@ -108,7 +109,44 @@ def save_crop(img, bbox_norm, square_crop, save):
     return os.path.dirname(save)
 
 
-def main(task_id):
+def get_weights(args):
+    if not args.weights:
+        try:
+            pretrained_weights = sorted(
+                glob(f'{Path(__file__).parent}/weights/*.h5'))[-1]
+        except IndexError:
+            raise FileNotFoundError(
+                'No weights detected. You need to train the model at least once!'
+            )
+    else:
+        pretrained_weights = args.weights
+    logger.debug(f'Pretrained weights file: {pretrained_weights}')
+    return pretrained_weights
+
+
+def opts():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p',
+                        '--project-id',
+                        help='Project id number',
+                        type=int,
+                        required=True)
+    parser.add_argument(
+        '-w',
+        '--weights',
+        help='Path to the model weights to use. If empty, will use latest',
+        type=str)
+    parser.add_argument(
+        '-s',
+        '--min-score',
+        help=
+        'Minimum prediction score to accept as valid prediction. Accept all if left empty',
+        type=float)
+    return parser.parse_args()
+
+
+@ray.remote
+def download_and_crop(task_id):
     url = f'{os.environ["LS_HOST"]}/api/tasks/{task_id}'
 
     resp = requests.get(url, headers=headers)
@@ -119,8 +157,10 @@ def main(task_id):
 
     LS_domain_name = os.environ['LS_HOST'].split('//')[1]
     SRV_domain_name = os.environ['SRV_HOST'].split('//')[1]
-    url = task_['data']['image'].replace(f'{LS_domain_name}/data/local-files/?d=',
-                                         f'{SRV_domain_name}/')
+
+    url = task_['data']['image'].replace(
+        f'{LS_domain_name}/data/local-files/?d=', f'{SRV_domain_name}/')
+
     img_name = Path(img_in_task).name
     img_relative_path = f'tmp/downloaded/{img_name}'
 
@@ -135,24 +175,29 @@ def main(task_id):
         return
 
     img = load_local_image(img_relative_path)
+    return bbox_res, img
 
+
+@ray.remote
+def main(task_id, bbox_res, img):
     results = []
     scores = []
-    bboxes = []
 
-    for n, task in enumerate(bbox_res['detections']):
+    for task in bbox_res['detections']:
         if task['category'] != '1':
             continue
-
-        bboxes.append([n, task['bbox']])
-        out_cropped = f'tmp/cropped/{Path(img_name).stem}_{bboxes[0][0]}.jpg'
-        save_crop(img, bboxes[0][1], False, out_cropped)
+        out_cropped = f'tmp/cropped/{uuid.uuid4().hex}.jpg'
+        save_crop(img, task['bbox'], False, out_cropped)
 
         pred, prob = predict(out_cropped)
 
+        if args.min_score:
+            if prob < args.min_score:
+                continue
+        scores.append(prob)
+
         x, y, width, height = [x * 100 for x in task['bbox']]
 
-        scores.append(prob)
         results.append({
             'from_name': 'label',
             'to_name': 'image',
@@ -182,44 +227,18 @@ def main(task_id):
     logger.debug(resp.json())
 
 
-def get_weights(args):
-    if not args.weights:
-        try:
-            pretrained_weights = sorted(
-                glob(f'{Path(__file__).parent}/weights/*.h5'))[-1]
-        except IndexError:
-            raise FileNotFoundError(
-                'No weights detected. You need to train the model at least once!'
-            )
-    else:
-        pretrained_weights = args.weights
-    logger.debug(f'Pretrained weights file: {pretrained_weights}')
-    return pretrained_weights
-
-
-def opts():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-p',
-                        '--project-id',
-                        help='Project id number',
-                        type=int,
-                        required=True)
-    parser.add_argument(
-        '-w',
-        '--weights',
-        help='Path to the model weights to use. If empty, will use latest.',
-        type=str)
-    return parser.parse_args()
-
-
 if __name__ == '__main__':
-    logger.add('apply_predictions.log')
+    load_dotenv()
+    os.environ['RAY_IGNORE_UNHANDLED_ERRORS'] = '1'
+    ray.init()
+    # logger.add('apply_predictions.log')
     signal.signal(signal.SIGINT, keyboard_interrupt_handler)
     args = opts()
 
     md_data = get_mongodb_data()
     headers = make_headers()
     mkdirs()
+    g = 0
 
     class_names = 'class_names.npy'
     if not Path(class_names).exists():
@@ -230,14 +249,24 @@ if __name__ == '__main__':
     project_id = args.project_id
 
     project_tasks = get_all_tasks(headers, project_id)
-    tasks_ids = [t_['id'] for t_ in project_tasks]
+    # with open('tasks_latest.json') as j:
+    #     project_tasks = json.load(j)
+    tasks_id = [t_['id'] for t_ in project_tasks]
 
     logger.debug('Starting prediction...')
     try:
-        for task_id in tqdm(tasks_ids):
-            main(task_id)
+        for task_id in tqdm(tasks_id):
+
+            future = download_and_crop.remote(task_id)
+            if not ray.get(future):
+                continue
+            else:
+                bbox_res, img = ray.get(future)
+            main.remote(task_id, bbox_res, img)
+
     except Exception as e:
         logger.exception(e)
     finally:
-        shutil.rmtree('tmp')
+        time.sleep(1)
+        shutil.rmtree('tmp', ignore_errors=True)
         sys.exit(0)

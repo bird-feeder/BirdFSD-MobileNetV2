@@ -11,3 +11,4 @@ pillow>=9.0.1
 pandas>=1.4.1
 ipyplot>=1.1.0
 rich>=9.13.0
+ray>=1.11.0
