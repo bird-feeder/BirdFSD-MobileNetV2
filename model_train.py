@@ -82,9 +82,11 @@ def feature_extractor(train_ds, loaded_feature_extractor_model='mobilenet_v2'):
 
 
 def build_model(feature_extractor_layer, image_batch, num_classes):
-    model = tf.keras.Sequential(
-        [feature_extractor_layer,
-         tf.keras.layers.Dense(num_classes, activation=tf.keras.activations.softmax)])
+    model = tf.keras.Sequential([
+        feature_extractor_layer,
+        tf.keras.layers.Dense(num_classes,
+                              activation=tf.keras.activations.softmax)
+    ])
     logger.debug(model.summary())
     predictions = model(image_batch)
     logger.debug(predictions.shape)

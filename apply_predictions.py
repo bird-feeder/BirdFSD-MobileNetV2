@@ -1,3 +1,4 @@
+import argparse
 import imghdr
 import json
 import os
@@ -42,7 +43,7 @@ def make_headers():
 
 def get_all_tasks(headers, project_id):
     logger.debug('Getting tasks data... This might take few minutes...')
-    url = f"https://ls.aibird.me/api/projects/{project_id}/tasks?page_size=10000"
+    url = f'{os.environ["LS_HOST"]}/api/projects/{project_id}/tasks?page_size=10000'
     resp = requests.get(url,
                         headers=headers,
                         data=json.dumps({'project': project_id}))
@@ -107,7 +108,7 @@ def save_crop(img, bbox_norm, square_crop, save):
 
 
 def main(task_id):
-    url = f"https://ls.aibird.me/api/tasks/{task_id}"
+    url = f'{os.environ["LS_HOST"]}/api/tasks/{task_id}'
 
     resp = requests.get(url, headers=headers)
     task_ = resp.json()
@@ -115,8 +116,10 @@ def main(task_id):
         return
     img_in_task = task_['data']['image']
 
-    url = task_['data']['image'].replace('ls.aibird.me/data/local-files/?d=',
-                                         'srv.aibird.me/')
+    LS_domain_name = os.environ['LS_HOST'].split('//')[1]
+    SRV_domain_name = os.environ['SRV_HOST'].split('//')[1]
+    url = task_['data']['image'].replace(f'{LS_domain_name}/data/local-files/?d=',
+                                         f'{SRV_domain_name}/')
     img_name = Path(img_in_task).name
     img_relative_path = f'tmp/downloaded/{img_name}'
 
@@ -173,22 +176,58 @@ def main(task_id):
         'task': task_id
     }
 
-    url = "https://ls.aibird.me/api/predictions/"
+    url = F'{os.environ["LS_HOST"]}/api/predictions/'
     resp = requests.post(url, headers=headers, data=json.dumps(post_))
     logger.debug(resp.json())
+
+
+def get_weights(args):
+    if not args.weights:
+        try:
+            pretrained_weights = sorted(
+                glob(f'{Path(__file__).parent}/weights/*.h5'))[-1]
+        except IndexError:
+            raise FileNotFoundError(
+                'No weights detected. You need to train the model at least once!'
+            )
+    else:
+        pretrained_weights = args.weights
+    logger.debug(f'Pretrained weights file: {pretrained_weights}')
+    return pretrained_weights
+
+
+def opts():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p',
+                        '--project-id',
+                        help='Project id number',
+                        type=int,
+                        required=True)
+    parser.add_argument(
+        '-w',
+        '--weights',
+        help='Path to the model weights to use. If empty, will use latest.',
+        type=str,
+        required=True,)
+    return parser.parse_args()
 
 
 if __name__ == '__main__':
     logger.add('apply_predictions.log')
     signal.signal(signal.SIGINT, keyboard_interrupt_handler)
+    args = opts()
 
     md_data = get_mongodb_data()
     headers = make_headers()
     mkdirs()
 
     class_names = 'class_names.npy'
-    pretrained_weights = 'weights/03_14_2022__1647175692.h5'
-    project_id = 8
+    if not Path(class_names).exists():
+        raise FileNotFoundError(
+            'No class names detected. You need to train the model at least once!'
+        )
+    pretrained_weights = pretrained_weights()
+    project_id = args.project_id
 
     project_tasks = get_all_tasks(headers, project_id)
     tasks_ids = [t_['id'] for t_ in project_tasks]

@@ -1,16 +1,14 @@
 import imghdr
-import json
 import os
 import shutil
 from glob import glob
 from pathlib import Path
-from urllib.error import HTTPError
 
 import cv2
 import matplotlib
+
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from PIL import Image
@@ -77,7 +75,9 @@ def main(data):  # project export min-json file
             crop_img = img[y:y + h, x:x + w]
             im = Image.fromarray(crop_img)
             im.save(f'dataset_cropped/{label_name}/{Path(item["image"]).name}',
-                    format='JPEG', quality=100, subsampling=0)
+                    format='JPEG',
+                    quality=100,
+                    subsampling=0)
 
     for _class in ['no animal', 'severe occultation', 'distorted image']:
         shutil.rmtree(f'dataset_cropped/{_class}')

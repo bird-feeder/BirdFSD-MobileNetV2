@@ -8,7 +8,6 @@ from urllib.error import HTTPError
 import requests
 from dotenv import load_dotenv
 from loguru import logger
-from tqdm import tqdm
 
 from helpers import load_export_data
 
