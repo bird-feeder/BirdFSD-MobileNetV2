@@ -5,6 +5,7 @@ import os
 import shutil
 import signal
 import sys
+from glob import glob
 from pathlib import Path
 
 import numpy as np
@@ -207,8 +208,7 @@ def opts():
         '-w',
         '--weights',
         help='Path to the model weights to use. If empty, will use latest.',
-        type=str,
-        required=True,)
+        type=str)
     return parser.parse_args()
 
 
@@ -226,7 +226,7 @@ if __name__ == '__main__':
         raise FileNotFoundError(
             'No class names detected. You need to train the model at least once!'
         )
-    pretrained_weights = pretrained_weights()
+    pretrained_weights = get_weights(args)
     project_id = args.project_id
 
     project_tasks = get_all_tasks(headers, project_id)
