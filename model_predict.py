@@ -1,17 +1,23 @@
+import argparse
 import os
 import warnings
+from glob import glob
+from pathlib import Path
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import tensorflow_hub as hub
 from loguru import logger
-from tensorflow.keras.applications.resnet50 import decode_predictions
+from rich.console import Console
+from rich.table import Table
 
 
 def preprocess(image_path):
+    logger.debug(f'Image path: {image_path}')
     image_raw = tf.io.read_file(image_path)
     image = tf.image.decode_image(image_raw)
     image = tf.cast(image, tf.float32)
@@ -51,13 +57,49 @@ def predict_from_exported(model, pretrained_weights_path, class_names,
     return reloaded_predicted_label_batch, prob
 
 
+def list_input(args):
+    exts = ['jpg', 'jpeg', 'JPG', 'JPEG']
+    if Path(args.input).is_dir():
+        if args.recursive:
+            input_files = sum([glob(f'{args.input}/**/*.{ext}', recursive=True) for ext in exts], [])
+        else:
+            input_files = sum([glob(f'{args.input}/*.{ext}') for ext in exts], [])
+    else:
+        input_files = [args.input]
+    return input_files
+
+
+def pretty_table(list_):
+    results_df = pd.DataFrame(list_)
+    table = Table(title='Model Predictions', style='#44475a')
+    for col, style in zip(results_df.columns, ['#f1fa8c', '#8be9fd', '#bd93f9']):
+        table.add_column(col, style=style)
+    for val in results_df.values:
+        table.add_row(*[str(x) for x in val])
+    Console().print(table)
+
+
+def opts():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input', help='Path to the image file or the images directory')
+    parser.add_argument('-r', '--recursive', help='Find images recursively in the input folder')
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
+    args = opts()
+
     class_names = 'class_names.npy'
-    pretrained_weights = 'weights/1647175692.h5'
+    pretrained_weights = f'{Path(__file__).parent}/weights/03_14_2022__1647175692.h5'
     model = create_model(class_names)
     model.load_weights(pretrained_weights)
 
-    image_path = 'dataset_cropped/Carolina Chickadee/mo-picam1-4879.jpg'
-    image = preprocess(image_path)
+    input_files = list_input(args)
+    results = []
+    
+    for input_file in input_files:
+        image = preprocess(input_file)
+        pred, score = predict_from_exported(model, pretrained_weights, class_names, image)
+        results.append({'Image': '/'.join(Path(input_file).parts[-2:]), 'Prediction': pred, 'Probability': score})
 
-    predict_from_exported(model, pretrained_weights, class_names, image)
+    pretty_table(results)
