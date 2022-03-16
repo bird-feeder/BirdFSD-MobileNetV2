@@ -168,3 +168,5 @@ tasks_latest.json
 picam/
 Untitled.ipynb
 model_debug.ipynb
+.env*
+tmp/

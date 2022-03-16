@@ -183,11 +183,11 @@ def main(task_id, bbox_res, img):
     results = []
     scores = []
 
-    for task in bbox_res['detections']:
-        if task['category'] != '1':
+    for detection in bbox_res['detections']:
+        if detection['category'] != '1':
             continue
         out_cropped = f'tmp/cropped/{uuid.uuid4().hex}.jpg'
-        save_crop(img, task['bbox'], False, out_cropped)
+        save_crop(img, detection['bbox'], False, out_cropped)
 
         pred, prob = predict(out_cropped)
 
@@ -196,7 +196,7 @@ def main(task_id, bbox_res, img):
                 continue
         scores.append(prob)
 
-        x, y, width, height = [x * 100 for x in task['bbox']]
+        x, y, width, height = [x * 100 for x in detection['bbox']]
 
         results.append({
             'from_name': 'label',
@@ -238,7 +238,6 @@ if __name__ == '__main__':
     md_data = get_mongodb_data()
     headers = make_headers()
     mkdirs()
-    g = 0
 
     class_names = 'class_names.npy'
     if not Path(class_names).exists():
