@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import signal
+import shutil
 import sys
 import uuid
 from itertools import groupby
