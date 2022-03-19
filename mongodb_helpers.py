@@ -39,7 +39,6 @@ def main():
         except pymongo.errors.DuplicateKeyError:
             logger.debug('Document with duplicate _id:', x)
 
-
     with open(data_file, 'rb') as f:
         db.data_files.insert_one({
             '_id':

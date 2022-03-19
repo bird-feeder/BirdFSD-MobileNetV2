@@ -21,8 +21,9 @@ def load_export_data(project_id, TOKEN, export_all=False):
     data = resp.json()
     LS_domain_name = os.environ['LS_HOST'].split('//')[1]
     SRV_domain_name = os.environ['SRV_HOST'].split('//')[1]
-    data = json.dumps(data).replace(f'{os.environ["LS_domain_name"]}/data/local-files/?d=',
-                                    f'{os.environ["SRV_domain_name"]}/')
+    data = json.dumps(data).replace(
+        f'{os.environ["LS_domain_name"]}/data/local-files/?d=',
+        f'{os.environ["SRV_domain_name"]}/')
     data = json.loads(data)
     return data
 

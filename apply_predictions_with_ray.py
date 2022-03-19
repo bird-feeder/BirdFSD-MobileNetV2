@@ -106,21 +106,6 @@ def save_crop(img, bbox_norm, square_crop, save):
     return os.path.dirname(save)
 
 
-# def get_weights(args):
-#     if not args.weights:
-#         try:
-#             pretrained_weights = sorted(
-#                 glob(f'{Path(__file__).parent}/weights/*.h5'))[-1]
-#         except IndexError:
-#             raise FileNotFoundError(
-#                 'No weights detected. You need to train the model at least once!'
-#             )
-#     else:
-#         pretrained_weights = args.weights
-#     logger.debug(f'Pretrained weights file: {pretrained_weights}')
-#     return pretrained_weights
-
-
 @ray.remote
 def download_and_crop(task_id, as_numpy=False):
     load_dotenv(f'{Path(__file__).parent}/.env')
@@ -205,27 +190,6 @@ def make_prediction(im_batch):
         return reloaded_result_batch, reloaded_predicted_id, reloaded_predicted_label_batch
 
 
-def opts():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-p',
-                        '--project-id',
-                        help='Project id number',
-                        type=int,
-                        required=True)
-    parser.add_argument(
-        '-w',
-        '--weights',
-        help='Path to the model weights to use. If empty, will use latest',
-        type=str)
-    parser.add_argument(
-        '-s',
-        '--min-score',
-        help=
-        'Minimum prediction score to accept as valid prediction. Accept all if left empty',
-        type=float)
-    return parser.parse_args()
-
-
 def predict_batch(BATCH):
     logger.info('Downloading and cropping the batch...')
     futures = []
@@ -295,6 +259,34 @@ def predict_batch(BATCH):
     return POST_DICTS
 
 
+def opts():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p',
+                        '--project-id',
+                        help='Project id number',
+                        type=int,
+                        required=True)
+    parser.add_argument('-m',
+                        '--model-path',
+                        help='Path to the model in the SavedModel format',
+                        type=str)
+    parser.add_argument('-b',
+                        '--batch-size',
+                        help='Batch size to process per iteration',
+                        type=int)
+    parser.add_argument(
+        '-s',
+        '--min-score',
+        help=
+        'Minimum prediction score to accept as valid prediction. Accept all if left empty',
+        type=float)
+    parser.add_argument('-c',
+                        '--class-names',
+                        help='Path to class names in .npy format',
+                        type=str)
+    return parser.parse_args()
+
+
 @ray.remote
 def main(_DCT):
     for K, _item in _DCT.items():
@@ -331,7 +323,7 @@ def main(_DCT):
 
         logger.debug({'post': post_})
 
-        url = F'{os.environ["LS_HOST"]}/api/predictions/'
+        url = f'{os.environ["LS_HOST"]}/api/predictions/'
         resp = requests.post(url, headers=headers, data=json.dumps(post_))
         logger.debug({'response': resp.json()})
 
@@ -339,12 +331,14 @@ def main(_DCT):
 if __name__ == '__main__':
     args = opts()
 
-    IDs_BATCH_SIZE = 256
-    MODEL_PATH = 'saved_models/1647175692'
+    IDs_BATCH_SIZE = args.batch_size
+    MODEL_PATH = args.model_path
     dotenv_path = f'{Path(__file__).parent}/.env'
-    class_names = 'class_names.npy'
+    class_names = args.class_names
 
-    logging.basicConfig(level='NOTSET',
+    logging.basicConfig(filename=f'{Path(__file__).stem}.log',
+                        filemode='a',
+                        level='NOTSET',
                         format='%(message)s',
                         datefmt='[%X]',
                         handlers=[RichHandler()])
@@ -357,9 +351,9 @@ if __name__ == '__main__':
     if gpus:
         os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
         os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-        os.environ['PATH'] = '/usr/local/cuda-11.5/bin:' + os.environ['PATH']
-        os.environ[
-            'LD_LIBRARY_PATH'] = '/usr/local/cuda-11.5/lib64:/usr/lib/x86_64-linux-gnu'
+        # os.environ['PATH'] = '/usr/local/cuda-11.5/bin:' + os.environ['PATH']
+        # os.environ[
+        #     'LD_LIBRARY_PATH'] = '/usr/local/cuda-11.5/lib64:/usr/lib/x86_64-linux-gnu'
 
         try:
             tf.config.set_logical_device_configuration(
@@ -385,8 +379,6 @@ if __name__ == '__main__':
         raise FileNotFoundError(
             'No class names detected. You need to train the model at least once!'
         )
-    # pretrained_weights = sorted(
-    #                 glob('weights/*.h5'))[-1]
 
     try:
         project_tasks = get_all_tasks(headers, args.project_id)
@@ -398,7 +390,9 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # tasks_id = [t_['id'] for t_ in project_tasks]
-    tasks_id = [t_['id'] for t_ in project_tasks if not t_['predictions']]  # !!! will ignore split predictions within a task of detections of one task are in different batches (intentional bug)
+    tasks_id = [
+        t_['id'] for t_ in project_tasks if not t_['predictions']
+    ]  # !!! will ignore split predictions within a task of detections of one task are in different batches (intentional bug)
 
     logger.info(f'Number of tasks to predict: {len(tasks_id)}')
     tasks_id_batches = divide_list(tasks_id, IDs_BATCH_SIZE)
@@ -407,7 +401,11 @@ if __name__ == '__main__':
 
     for N, BATCH in enumerate(tasks_id_batches):
         Console().rule(f'[#50fa7b]BATCH: {N + 1}/{len(tasks_id_batches)}')
-        POST_DICTS = predict_batch(BATCH)
+        try:
+            POST_DICTS = predict_batch(BATCH)
+        except IndexError as e:
+            logger.exception(e)
+            continue
 
         logger.info('Posting the batch results to label-studio...')
 

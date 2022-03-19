@@ -113,10 +113,10 @@ def train_model(NUM_EPOCHS=100):
 def export_model():
     Path('weights').mkdir(exist_ok=True)
     t = int(time.time())
-    model.save(f'saved_models/{t}')
-    model.save_weights(f'weights/{t}.h5')
+    model.save(f'saved_models/{t}-BirdFSDV1-mnv2')
+    model.save_weights(f'weights/{t}-BirdFSDV1-mnv2.h5')
     np.save(f'class_names.npy', class_names)
-    logger.debug(f'Saved model: {t}')
+    logger.debug(f'Model version: {t}')
 
 
 if __name__ == '__main__':

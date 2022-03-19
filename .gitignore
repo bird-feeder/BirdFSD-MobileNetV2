@@ -162,7 +162,7 @@ logs/
 saved_models/
 class_names.npy
 *.html
-_ignore/
+.ignore/
 weights/
 tasks_latest.json
 picam/
@@ -170,3 +170,5 @@ Untitled.ipynb
 model_debug.ipynb
 .env*
 tmp/
+data/
+notebooks/
